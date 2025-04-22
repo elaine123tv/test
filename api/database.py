@@ -11,6 +11,5 @@ try:
 except ssm.exceptions.ParameterNotFound:
     raise ValueError("SSM parameter not found")
 
-URL_DATABASE = data['Parameter']['Value']
 engine = create_engine(URL_DATABASE)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
