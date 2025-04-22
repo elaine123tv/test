@@ -9,10 +9,6 @@ class Player(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
 
-    __table_args__ = (
-        CheckConstraint('passcode BETWEEN 1000 AND 9999', name='check_passcode_range'),
-    )
-
 class GameSession(Base):
     __tablename__ = "game_sessions"
     session_id = Column(Integer, primary_key=True, index=True)
