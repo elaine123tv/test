@@ -12,8 +12,10 @@ models.Base.metadata.create_all(bind=engine)
 
 # Pydantic Schemas
 class PlayerCreate(BaseModel):
-    username: str
-
+    first_name: str
+    last_name: str
+    passcode: conint(ge=1000, le=9999) = Field(..., description="4-digit passcode")
+    
 class PlayerResponse(BaseModel):
     player_id: int
     class Config:
@@ -119,7 +121,7 @@ async def read_root():
 @app.post("/create_player")
 async def create_player(player: PlayerCreate, db: db_dependency):
     try:
-        db_player = models.Player(username=player.username)
+        db_player = models.Player(first_name=player.first_name, surname=player.surname, passcode=player.passcode)
         db.add(db_player)
         db.commit()
         db.refresh(db_player)
