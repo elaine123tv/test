@@ -9,7 +9,7 @@ class Player(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
 
-    _table_args__ = (
+    __table_args__ = (
         CheckConstraint('passcode BETWEEN 1000 AND 9999', name='check_passcode_range'),
     )
 
