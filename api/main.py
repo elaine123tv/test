@@ -1,37 +1,20 @@
 from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import models
 from typing import Annotated
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 
-# Replace with your AWS RDS connection string
-
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
 
-# Pydantic Schemas
+# Pydantic Schemas: These define data validation rules for API requests & responses.
 class PlayerCreate(BaseModel):
     first_name: str
     last_name: str
-    passcode: conint(ge=1000, le=9999) = Field(..., description="4-digit passcode")
+    passcode: int = Field(ge=1000, le=9999, description="4-digit passcode")
     
-class PlayerResponse(BaseModel):
-    player_id: int
-    class Config:
-        from_attributes = True
-
-class GameSessionCreate(BaseModel):
-    player_id: int
-
-class GameSessionResponse(BaseModel):
-    session_id: int
-    player_id: int
-    date_time: str
-    class Config:
-        from_attributes = True
-
-# Schemas for game exercise tables (all fields except session_id)
+# schemas for game exercise tables (all fields except session_id)
 class BreathingTechniqueCreate(BaseModel):
     play_or_pass: bool
     breaths: int
@@ -117,44 +100,40 @@ db_dependency = Annotated[Session, Depends(get_db)]
 async def read_root():
     return {"message": "Hello World"}
 # ----- Players Endpoints -----
-# create new player
+# create new player, returns player_id
 @app.post("/create_player")
 async def create_player(player: PlayerCreate, db: db_dependency):
     try:
-        db_player = models.Player(first_name=player.first_name, surname=player.surname, passcode=player.passcode)
+        hashed = bcrypt.hashpw(str(player.passcode).encode('utf-8'), bcrypt.gensalt())
+        db_player = models.Player(first_name=player.first_name, last_name=player.last_name, passcode=hashed.decode('utf-8'))
         db.add(db_player)
         db.commit()
         db.refresh(db_player)
-        return {"message": "New player record created"}
+        return {"player_id": db_player.player_id}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(status_code=500, detail="Database error") 
 
-# get id from existing username
-@app.get("/get_player_id/{username}")
-async def get_player_id(username:str, db:db_dependency):
-    try:
-        db_player = db.query(models.Player).filter(models.Player.username == username).first()
-        if not db_player:
-            raise HTTPException(status_code=404, detail="Player not found")
-        return {"player_id":db_player.player_id}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database error")
-        
+# returns player_id
+async def verify_player_passcode(player_id: int, passcode: int, db: db_dependency):
+    player = db.query(models.Player).filter(models.Player.player_id == player_id).first()
+    if not player:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Player not found")
+    # check if the hashed passcode matches
+    if not bcrypt.checkpw(str(passcode).encode('utf-8'), player.passcode.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Incorrect passcode")
+    return {"player_id": db_player.player_id}
 
 # create session by player_id and return newly created session_id
-@app.post("/create_game_session/{response_player_id}")
-async def create_game_session(response_player_id:int, db:db_dependency):
-    # Ensure the player exists
+@app.post("/create_game_session")
+async def create_game_session(player_id: int, passcode: int, db: db_dependency):
+    # Verify passcode first
+    player = await verify_player_passcode(player_id, passcode, db)
     try:
-        player = db.query(models.Player).filter(models.Player.player_id == response_player_id).first()
-        if not player:
-            raise HTTPException(status_code=404, detail="Player not found")
-        new_session = models.GameSession(player_id=response_player_id)
+        new_session = models.GameSession(player_id=player.player_id)
         db.add(new_session)
         db.commit()
-        return new_session.session_id
+        return {"session_id": new_session.session_id}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
