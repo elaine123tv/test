@@ -5,7 +5,7 @@ from database import Base
 class Player(Base):
     __tablename__ = "players"
     player_id = Column(Integer, primary_key=True, index=True)
-    passcode = Column(Integer, nullable=False) 
+    passcode = Column(String, nullable=False) 
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
 
