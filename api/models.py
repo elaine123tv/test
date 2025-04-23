@@ -2,6 +2,9 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, Float, T
 from sqlalchemy.sql import func
 from database import Base
 
+# this file defines what our database tables look like
+
+# table to store player information
 class Player(Base):
     __tablename__ = "players"
     player_id = Column(Integer, primary_key=True, index=True)
@@ -9,11 +12,16 @@ class Player(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
 
+# table to store game sessions
 class GameSession(Base):
     __tablename__ = "game_sessions"
     session_id = Column(Integer, primary_key=True, index=True)
     player_id = Column(Integer, ForeignKey("players.player_id"), nullable=False)
     date_time = Column(DateTime, default=func.now())
+
+# tables for each game exercise follow...
+# each one stores different information about that particular game
+# they all link to a game session through session_id
 
 class BreathingTechnique(Base):
     __tablename__ = "breathing_techniques"
