@@ -27,7 +27,7 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # tell the app what to do when rate limits are exceeded
 
-# Pydantic Schemas: these classes define what information we expect when sending a request (creating a new player or game data)
+# Pydantic Schemas: these classes define what information we expect when sending a request to the API (creating a new player or game data)
 # they help make sure the data is in the right format before we save it
 
 # defines what info is needed to create a new player
