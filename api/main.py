@@ -4,9 +4,25 @@ import models
 from typing import Annotated
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
+from fastapi import Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from datetime import datetime, timedelta
+import bcrypt
+from fastapi.responses import JSONResponse  # Add this import
 
+async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests"}
+    )
+    
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Pydantic Schemas: These define data validation rules for API requests & responses.
 class PlayerCreate(BaseModel):
@@ -102,38 +118,58 @@ async def read_root():
 # ----- Players Endpoints -----
 # create new player, returns player_id
 @app.post("/create_player")
-async def create_player(player: PlayerCreate, db: db_dependency):
+@limiter.limit("5/minute")
+async def create_player(request: Request, player: PlayerCreate, db: db_dependency):
     try:
         hashed = bcrypt.hashpw(str(player.passcode).encode('utf-8'), bcrypt.gensalt())
-        db_player = models.Player(first_name=player.first_name, last_name=player.last_name, passcode=hashed.decode('utf-8'))
+        db_player = models.Player(
+            first_name=player.first_name,
+            last_name=player.last_name,
+            passcode=hashed.decode('utf-8')
+        )
         db.add(db_player)
         db.commit()
         db.refresh(db_player)
-        return {"player_id": db_player.player_id}
+        return db_player.player_id
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Database error") 
+        raise HTTPException(status_code=500, detail="Database error")
 
 # returns player_id
-async def verify_player_passcode(player_id: int, passcode: int, db: db_dependency):
+def verify_player_passcode(player_id: int, passcode: int, db: db_dependency):
     player = db.query(models.Player).filter(models.Player.player_id == player_id).first()
     if not player:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Player not found")
     # check if the hashed passcode matches
     if not bcrypt.checkpw(str(passcode).encode('utf-8'), player.passcode.encode('utf-8')):
         raise HTTPException(status_code=401, detail="Incorrect passcode")
-    return {"player_id": db_player.player_id}
+    return player.player_id
 
 # create session by player_id and return newly created session_id
 @app.post("/create_game_session")
-async def create_game_session(player_id: int, passcode: int, db: db_dependency):
-    # Verify passcode first
-    player = await verify_player_passcode(player_id, passcode, db)
+@limiter.limit("10/minute")
+async def create_game_session(request: Request, player_id: int, passcode: int, db: db_dependency):
+    #verify passcode first
+    verified_player_id = verify_player_passcode(player_id, passcode, db)
     try:
-        new_session = models.GameSession(player_id=player.player_id)
+        # Check player-based rate limit (20 sessions per hour)
+        hour_ago = datetime.utcnow() - timedelta(hours=1)
+        session_count = db.query(models.GameSession).filter(
+            models.GameSession.player_id == player_id,
+            models.GameSession.date_time >= hour_ago
+        ).count()
+        if session_count >= 20:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many sessions created in the last hour."
+            )
+        # Create new session
+        new_session = models.GameSession(player_id=verified_player_id)
         db.add(new_session)
         db.commit()
-        return {"session_id": new_session.session_id}
+        return new_session.session_id
+    except HTTPException as e:
+        raise e
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
@@ -234,3 +270,4 @@ async def create_balloons(session_id: int, data: BalloonsCreate, db:db_dependenc
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
+
