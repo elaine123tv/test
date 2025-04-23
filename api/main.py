@@ -10,7 +10,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from datetime import datetime, timedelta
 import bcrypt
-from fastapi.responses import JSONResponse  # Add this import
+from fastapi.responses import JSONResponse 
 
 async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
